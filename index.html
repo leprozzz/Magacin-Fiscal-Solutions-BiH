@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="bs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Magacin</title>
+<style>
+:root{--bg:#f3f4f6;--ink:#111827;--mut:#6b7280;--line:#d9dde3;--ok:#166534;--okbg:#dcfce7;--err:#991b1b;--errbg:#fee2e2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,Arial}
+header{background:var(--ink);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;justify-content:space-between;align-items:center}
+header b{font-size:17px}
+nav{display:flex;gap:6px}
+nav button{background:#374151;color:#fff;padding:8px 14px}
+nav button.on{background:#fff;color:var(--ink)}
+main{max-width:640px;margin:0 auto;padding:14px}
+.card{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 4px 14px rgba(0,0,0,.06)}
+label{display:block;font-size:12px;color:var(--mut);margin:12px 0 5px}
+label i{color:var(--err);font-style:normal}
+input,select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px;background:#fff;color:var(--ink)}
+textarea{min-height:60px}
+#serial{font-size:20px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.row{display:flex;gap:8px}
+button{border:0;border-radius:10px;padding:12px 16px;font-size:15px;cursor:pointer;background:#e5e7eb;color:var(--ink)}
+button.pri{background:var(--ink);color:#fff;width:100%;margin-top:14px;padding:14px}
+button.warn{background:#b91c1c;color:#fff}
+button:disabled{opacity:.5}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips label{margin:0;font-size:14px;color:var(--ink)}
+.chips input{display:none}
+.chips span{display:block;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.chips input:checked+span{background:var(--ink);color:#fff;border-color:var(--ink)}
+.stock{background:var(--okbg);border-radius:12px;padding:12px;line-height:1.6}
+.stock .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.mut{color:var(--mut);font-size:13px}
+.hint{font-size:13px;margin-top:8px;color:var(--mut)}
+#toast{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));padding:12px 14px;border-radius:12px;font-size:14px;z-index:20}
+#toast.ok{background:var(--okbg);color:var(--ok)}#toast.err{background:var(--errbg);color:var(--err)}
+#scan{position:fixed;inset:0;background:#000;z-index:10;display:flex;flex-direction:column;padding:calc(12px + env(safe-area-inset-top)) 12px 12px}
+#scan button{margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{border-bottom:1px solid var(--line);padding:4px;text-align:left}
+.errs{font-size:13px;color:var(--err);max-height:220px;overflow:auto;margin-top:8px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><b>📦 Magacin</b>
+  <nav><button id="t1" class="on">Unos</button><button id="t2">Uvoz</button></nav>
+</header>
+
+<main>
+<!-- ===== UNOS ===== -->
+<section id="p1">
+  <div class="card">
+    <label style="margin-top:0">Serijski broj</label>
+    <div class="row">
+      <input id="serial" autocomplete="off" autocapitalize="characters" placeholder="Skeniraj ili upiši + Enter">
+      <button id="scanBtn" title="Skeniraj kamerom">📷</button>
+    </div>
+    <label>Unosi (pamti se)</label>
+    <input id="by" placeholder="ime ili email">
+    <div id="hint" class="hint"></div>
+  </div>
+
+  <!-- uređaj je u stocku -->
+  <div id="stock" class="card" hidden>
+    <div class="stock" id="stockInfo"></div>
+    <div class="btns" id="stockBtns" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"></div>
+  </div>
+
+  <!-- uređaj nije u stocku -> IN -->
+  <div id="inForm" class="card" hidden>
+    <label style="margin-top:0">Porijeklo robe <i>*</i></label><div class="chips" id="orgChips"></div>
+    <label>Lokacija magacina <i>*</i></label><div class="chips" id="locChips"></div>
+    <label>Projekat <i>*</i></label>
+    <select id="project"></select>
+    <label>Ime / model <i>*</i></label>
+    <input id="name" list="names" placeholder="npr. Epson TM-T20">
+    <datalist id="names"></datalist>
+    <label>Napomena</label><textarea id="note"></textarea>
+    <button class="pri" id="saveIn">Primi u magacin (IN)</button>
+  </div>
+</section>
+
+<!-- ===== UVOZ ===== -->
+<section id="p2" hidden>
+  <div class="card">
+    <div class="mut">Excel/CSV s kolonama: serijski broj (obavezno), te opcionalno ime, projekat, lokacija, porijeklo, kretanje (IN/OUT), napomena. Što fali, popunjava se prefiksom ili zadanim vrijednostima ispod.</div>
+    <label>Fajl (.xlsx, .xls, .csv)</label>
+    <input type="file" id="file" accept=".xlsx,.xls,.csv">
+    <div class="row">
+      <div style="flex:1"><label>Zadani projekat</label><select id="iProject"></select></div>
+      <div style="flex:1"><label>Zadana lokacija</label><select id="iLoc"></select></div>
+    </div>
+    <label>Zadano porijeklo</label><select id="iOrg"></select>
+    <div id="prev" style="margin-top:12px"></div>
+    <button class="pri" id="doImport" hidden>Uvezi</button>
+    <div id="impRes" class="errs"></div>
+  </div>
+</section>
+</main>
+
+<div id="scan" hidden><div id="reader" style="flex:1"></div><button id="scanClose">Zatvori</button></div>
+<div id="toast" hidden></div>
+
+<script>
+// ====== POSTAVKE ======
+const API_URL = "https://script.google.com/macros/s/OVDJE_UPISI_DEPLOY_ID/exec";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const val = n => (document.querySelector(`input[name=${n}]:checked`) || {}).value || "";
+let CFG = { prefixes: [], projects: [], locations: [], origins: [] }, CUR = null, ROWS = [];
+
+function toast(msg, type) {
+  const t = $("toast"); t.textContent = msg; t.className = type; t.hidden = false;
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, type === "err" ? 6000 : 3000);
+}
+async function api(action, data = {}) {
+  const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ token: localStorage.token, action, ...data }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.message || "Greška");
+  return j;
+}
+async function run(fn) {
+  document.querySelectorAll("button").forEach(b => b.disabled = true);
+  try { return await fn(); } catch (e) { toast(e.message, "err"); }
+  finally { document.querySelectorAll("button").forEach(b => b.disabled = false); }
+}
+function loadScript(url, global) {
+  if (window[global]) return Promise.resolve();
+  return new Promise((ok, no) => { const s = document.createElement("script"); s.src = url; s.onload = ok; s.onerror = () => no(new Error("Biblioteka se nije učitala (internet?).")); document.head.appendChild(s); });
+}
+const guess = s => CFG.prefixes.filter(p => s.startsWith(p.prefix)).sort((a, b) => b.prefix.length - a.prefix.length)[0];
+
+// ====== INIT ======
+function chips(id, name, list, sel) {
+  $(id).innerHTML = list.map(v => `<label><input type="radio" name="${name}" value="${esc(v)}" ${v === sel ? "checked" : ""}><span>${esc(v)}</span></label>`).join("");
+}
+function opts(list, first) { return `<option value="">${first}</option>` + list.map(v => `<option>${esc(v)}</option>`).join(""); }
+
+async function init() {
+  $("by").value = localStorage.by || "";
+  if (!localStorage.token) localStorage.token = prompt("Unesi pristupni token:") || "";
+  try { CFG = await api("config"); }
+  catch (e) { toast(e.message, "err"); if (/token/i.test(e.message)) delete localStorage.token; return; }
+  chips("orgChips", "org", CFG.origins, localStorage.org);
+  chips("locChips", "loc", CFG.locations, localStorage.loc);
+  $("project").innerHTML = opts(CFG.projects, "— izaberi projekat —");
+  $("iProject").innerHTML = opts(CFG.projects, "— iz kolone/prefiksa —");
+  $("iLoc").innerHTML = opts(CFG.locations, "— izaberi —");
+  $("iOrg").innerHTML = opts(CFG.origins, "— izaberi —");
+  $("names").innerHTML = [...new Set(CFG.prefixes.map(p => p.name))].map(n => `<option value="${esc(n)}">`).join("");
+  $("serial").focus();
+}
+
+// ====== TABOVI ======
+[1, 2].forEach(n => $("t" + n).onclick = () => {
+  [1, 2].forEach(m => { $("p" + m).hidden = m !== n; $("t" + m).classList.toggle("on", m === n); });
+});
+
+// ====== UNOS ======
+$("serial").addEventListener("keydown", e => { if (e.key === "Enter") onSerial(); });
+$("by").onchange = () => localStorage.by = $("by").value.trim();
+
+async function onSerial() {
+  const s = $("serial").value.trim().toUpperCase();
+  $("serial").value = s; CUR = null; $("stock").hidden = $("inForm").hidden = true; $("hint").textContent = "";
+  if (!s) return;
+  await run(async () => { CUR = await api("lookup", { serial: s }); render(); });
+}
+
+function render() {
+  const c = CUR, g = guess(c.serial), inStock = c.status === "IN";
+  $("stock").hidden = !inStock; $("inForm").hidden = inStock;
+  if (inStock) {
+    const k = c.counts || {};
+    $("stockInfo").innerHTML = `✅ <b>${esc(c.name)}</b><br>${esc(c.project)} · ${esc(c.location)}<br>
+      <span class="mut">Porijeklo: ${esc(c.origin || "—")}<br>Isti model u projektu → ${CFG.locations.map(l => `${esc(l)}: ${k[l] || 0}`).join(" | ")} | OUT: ${k.OUT || 0}</span>`;
+    $("stockBtns").innerHTML = `<button class="warn" data-a="out">OUT (izlaz)</button>` +
+      CFG.locations.filter(l => l !== c.location).map(l => `<button data-a="to" data-to="${esc(l)}">Prebaci u ${esc(l)}</button>`).join("");
+  } else {
+    $("project").value = (g && g.project) || c.project || "";
+    $("name").value = (g && g.name) || c.name || "";
+    $("hint").textContent = c.status === "OUT" ? `Prethodno izdato iz ${c.location} (${c.project}).`
+      : g ? `Prepoznato po prefiksu ${g.prefix}.` : "Nepoznat prefiks – izaberi projekat i unesi ime.";
+    if (!$("project").value || !$("name").value) $("hint").textContent += " Projekat i ime su obavezni.";
+  }
+}
+
+$("stockBtns").onclick = e => {
+  const a = e.target.dataset.a; if (!a) return;
+  const by = $("by").value.trim();
+  if (a === "out") {
+    if (!confirm(`Izdati ${CUR.name} (${CUR.serial}) iz ${CUR.location}?`)) return;
+    run(async () => done(await api("submit", { serial: CUR.serial, movement: "OUT", enteredBy: by })));
+  } else run(async () => done(await api("transfer", { serial: CUR.serial, to: e.target.dataset.to, enteredBy: by })));
+};
+
+$("saveIn").onclick = () => {
+  const d = { serial: CUR.serial, movement: "IN", project: $("project").value, name: $("name").value.trim(),
+    location: val("loc"), origin: val("org"), note: $("note").value, enteredBy: $("by").value.trim() };
+  const miss = [["origin", "Porijeklo"], ["location", "Lokacija"], ["project", "Projekat"], ["name", "Ime"]].filter(([k]) => !d[k]).map(x => x[1]);
+  if (miss.length) return toast("Obavezno: " + miss.join(", "), "err");
+  localStorage.loc = d.location; localStorage.org = d.origin; localStorage.by = d.enteredBy;
+  run(async () => done(await api("submit", d)));
+};
+
+function done(r) {
+  toast(r.message, "ok"); CUR = null; $("serial").value = ""; $("note").value = "";
+  $("stock").hidden = $("inForm").hidden = true; $("hint").textContent = ""; $("serial").focus();
+}
+
+// ====== SKENER ======
+let scanner;
+$("scanBtn").onclick = async () => {
+  try {
+    await loadScript("https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js", "Html5Qrcode");
+    $("scan").hidden = false;
+    scanner = new Html5Qrcode("reader");
+    await scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 280, height: 140 } },
+      txt => { closeScan(); $("serial").value = txt; onSerial(); });
+  } catch (e) { closeScan(); toast("Kamera/skener nije dostupan: " + (e.message || e), "err"); }
+};
+async function closeScan() {
+  $("scan").hidden = true;
+  try { if (scanner) { await scanner.stop(); scanner.clear(); } } catch (e) {}
+  scanner = null;
+}
+$("scanClose").onclick = closeScan;
+
+// ====== UVOZ IZ EXCELA ======
+const ALIAS = { serial: ["serial", "serialnumber", "serijski", "serijskibroj", "sn", "s/n"], name: ["name", "ime", "naziv", "model", "uređaj", "uredjaj"],
+  project: ["project", "projekat", "klijent"], location: ["location", "lokacija", "magacin", "stocklocation"], origin: ["origin", "porijeklo", "izvor"],
+  movement: ["movement", "kretanje", "tip"], note: ["note", "napomena"] };
+const norm = h => String(h).toLowerCase().replace(/[^a-z0-9čćžšđ\/]/g, "");
+
+$("file").onchange = e => run(async () => {
+  const f = e.target.files[0]; if (!f) return;
+  await loadScript("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js", "XLSX");
+  const wb = XLSX.read(await f.arrayBuffer());
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: false });
+  if (!raw.length) throw new Error("Fajl je prazan.");
+  const map = {};
+  Object.keys(raw[0]).forEach(h => { for (const k in ALIAS) if (!map[k] && ALIAS[k].includes(norm(h))) map[k] = h; });
+  if (!map.serial) throw new Error("Nije pronađena kolona sa serijskim brojem. Pronađene kolone: " + Object.keys(raw[0]).join(", "));
+  ROWS = raw.map((r, i) => { const o = { row: i + 2 }; for (const k in map) o[k] = String(r[map[k]]).trim(); return o; }).filter(o => o.serial);
+  $("prev").innerHTML = `<b>${ROWS.length}</b> redova. Kolone: ${Object.entries(map).map(([k, h]) => `${k}←${esc(h)}`).join(", ")}
+    <table>${ROWS.slice(0, 5).map(r => `<tr><td>${esc(r.serial)}</td><td>${esc(r.name || "")}</td><td>${esc(r.project || "")}</td></tr>`).join("")}</table>`;
+  $("doImport").textContent = `Uvezi ${ROWS.length} redova`; $("doImport").hidden = false; $("impRes").innerHTML = "";
+});
+
+$("doImport").onclick = () => run(async () => {
+  const rows = ROWS.map(o => {
+    const g = guess(o.serial.toUpperCase());
+    return { row: o.row, serial: o.serial, movement: (o.movement || "IN").toUpperCase(),
+      project: (o.project || (g && g.project) || $("iProject").value).toUpperCase(), name: o.name || (g && g.name) || "",
+      location: (o.location || $("iLoc").value).toUpperCase(), origin: (o.origin || $("iOrg").value).toUpperCase(), note: o.note || "" };
+  });
+  const r = await api("importRows", { rows, enteredBy: $("by").value.trim() });
+  toast(`Uvezeno: ${r.added}, odbijeno: ${r.errors.length}`, r.errors.length ? "err" : "ok");
+  $("impRes").innerHTML = r.errors.map(x => `Red ${x.row} (${esc(x.serial)}): ${esc(x.message)}`).join("<br>");
+  $("doImport").hidden = true; $("prev").innerHTML = ""; $("file").value = ""; ROWS = [];
+});
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+init();
+</script>
+</body>
+</html>
