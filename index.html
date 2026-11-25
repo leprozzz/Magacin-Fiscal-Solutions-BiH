@@ -62,7 +62,7 @@ td,th{border-bottom:1px solid var(--line);padding:4px;text-align:left}
       <input id="serial" autocomplete="off" autocapitalize="characters" placeholder="Skeniraj ili upiši + Enter">
       <button id="scanBtn" title="Skeniraj kamerom">📷</button>
     </div>
-    <label>Unosi (pamti se)</label>
+    <label>Unosi <i>*</i></label>
     <input id="by" placeholder="ime ili email">
     <div id="hint" class="hint"></div>
   </div>
@@ -71,18 +71,23 @@ td,th{border-bottom:1px solid var(--line);padding:4px;text-align:left}
   <div id="stock" class="card" hidden>
     <div class="stock" id="stockInfo"></div>
     <div class="btns" id="stockBtns" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"></div>
+    <div id="outForm" hidden>
+      <label>Razlog izlaza <i>*</i></label><div class="chips" id="outChips"></div>
+      <label>Detalji (npr. lokacija instalacije)</label><textarea id="outNote"></textarea>
+      <div class="row" style="margin-top:12px"><button id="outCancel">Odustani</button><button class="warn" id="outOk" style="flex:1">Potvrdi OUT</button></div>
+    </div>
   </div>
 
   <!-- uređaj nije u stocku -> IN -->
   <div id="inForm" class="card" hidden>
-    <label style="margin-top:0">Porijeklo robe <i>*</i></label><div class="chips" id="orgChips"></div>
+    <label style="margin-top:0">Porijeklo / razlog ulaza <i>*</i></label><div class="chips" id="orgChips"></div>
     <label>Lokacija magacina <i>*</i></label><div class="chips" id="locChips"></div>
     <label>Projekat <i>*</i></label>
     <select id="project"></select>
     <label>Ime / model <i>*</i></label>
     <input id="name" list="names" placeholder="npr. Epson TM-T20">
     <datalist id="names"></datalist>
-    <label>Napomena</label><textarea id="note"></textarea>
+    <label>Detalji / napomena (obavezno za neke razloge)</label><textarea id="note"></textarea>
     <button class="pri" id="saveIn">Primi u magacin (IN)</button>
   </div>
 </section>
@@ -97,7 +102,7 @@ td,th{border-bottom:1px solid var(--line);padding:4px;text-align:left}
       <div style="flex:1"><label>Zadani projekat</label><select id="iProject"></select></div>
       <div style="flex:1"><label>Zadana lokacija</label><select id="iLoc"></select></div>
     </div>
-    <label>Zadano porijeklo</label><select id="iOrg"></select>
+    <label>Zadano porijeklo (za IN)</label><select id="iOrg"></select>
     <div id="prev" style="margin-top:12px"></div>
     <button class="pri" id="doImport" hidden>Uvezi</button>
     <div id="impRes" class="errs"></div>
@@ -115,7 +120,7 @@ const API_URL = "https://script.google.com/macros/s/OVDJE_UPISI_DEPLOY_ID/exec";
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const val = n => (document.querySelector(`input[name=${n}]:checked`) || {}).value || "";
-let CFG = { prefixes: [], projects: [], locations: [], origins: [] }, CUR = null, ROWS = [];
+let CFG = { prefixes: [], projects: [], locations: [], inReasons: [], outReasons: [], needsDetail: [] }, CUR = null, ROWS = [];
 
 function toast(msg, type) {
   const t = $("toast"); t.textContent = msg; t.className = type; t.hidden = false;
@@ -149,12 +154,13 @@ async function init() {
   if (!localStorage.token) localStorage.token = prompt("Unesi pristupni token:") || "";
   try { CFG = await api("config"); }
   catch (e) { toast(e.message, "err"); if (/token/i.test(e.message)) delete localStorage.token; return; }
-  chips("orgChips", "org", CFG.origins, localStorage.org);
-  chips("locChips", "loc", CFG.locations, localStorage.loc);
+  chips("orgChips", "org", CFG.inReasons, localStorage.org);
+  chips("outChips", "out", CFG.outReasons);
+  chips("locChips", "loc", CFG.locations); setLoc();
   $("project").innerHTML = opts(CFG.projects, "— izaberi projekat —");
   $("iProject").innerHTML = opts(CFG.projects, "— iz kolone/prefiksa —");
   $("iLoc").innerHTML = opts(CFG.locations, "— izaberi —");
-  $("iOrg").innerHTML = opts(CFG.origins, "— izaberi —");
+  $("iOrg").innerHTML = opts(CFG.inReasons, "— izaberi —");
   $("names").innerHTML = [...new Set(CFG.prefixes.map(p => p.name))].map(n => `<option value="${esc(n)}">`).join("");
   $("serial").focus();
 }
@@ -166,7 +172,10 @@ async function init() {
 
 // ====== UNOS ======
 $("serial").addEventListener("keydown", e => { if (e.key === "Enter") onSerial(); });
-$("by").onchange = () => localStorage.by = $("by").value.trim();
+// lokacija se pamti po imenu osobe (na ovom uređaju), ali se uvijek mora izabrati ako nije zapamćena
+const locs = () => JSON.parse(localStorage.locs || "{}"), who = () => $("by").value.trim().toLowerCase();
+function setLoc() { const l = locs()[who()]; document.querySelectorAll("input[name=loc]").forEach(r => r.checked = r.value === l); }
+$("by").onchange = () => { localStorage.by = $("by").value.trim(); setLoc(); };
 
 async function onSerial() {
   const s = $("serial").value.trim().toUpperCase();
@@ -179,9 +188,11 @@ function render() {
   const c = CUR, g = guess(c.serial), inStock = c.status === "IN";
   $("stock").hidden = !inStock; $("inForm").hidden = inStock;
   if (inStock) {
+    $("outForm").hidden = true; $("stockBtns").hidden = false; $("outNote").value = "";
+    document.querySelectorAll("input[name=out]").forEach(r => r.checked = false);
     const k = c.counts || {};
     $("stockInfo").innerHTML = `✅ <b>${esc(c.name)}</b><br>${esc(c.project)} · ${esc(c.location)}<br>
-      <span class="mut">Porijeklo: ${esc(c.origin || "—")}<br>Isti model u projektu → ${CFG.locations.map(l => `${esc(l)}: ${k[l] || 0}`).join(" | ")} | OUT: ${k.OUT || 0}</span>`;
+      <span class="mut">Zadnji upis: ${esc(c.note || "—")}<br>Isti model u projektu → ${CFG.locations.map(l => `${esc(l)}: ${k[l] || 0}`).join(" | ")} | OUT: ${k.OUT || 0}</span>`;
     $("stockBtns").innerHTML = `<button class="warn" data-a="out">OUT (izlaz)</button>` +
       CFG.locations.filter(l => l !== c.location).map(l => `<button data-a="to" data-to="${esc(l)}">Prebaci u ${esc(l)}</button>`).join("");
   } else {
@@ -195,19 +206,24 @@ function render() {
 
 $("stockBtns").onclick = e => {
   const a = e.target.dataset.a; if (!a) return;
-  const by = $("by").value.trim();
-  if (a === "out") {
-    if (!confirm(`Izdati ${CUR.name} (${CUR.serial}) iz ${CUR.location}?`)) return;
-    run(async () => done(await api("submit", { serial: CUR.serial, movement: "OUT", enteredBy: by })));
-  } else run(async () => done(await api("transfer", { serial: CUR.serial, to: e.target.dataset.to, enteredBy: by })));
+  if (a === "out") { $("stockBtns").hidden = true; $("outForm").hidden = false; return; }
+  run(async () => done(await api("transfer", { serial: CUR.serial, to: e.target.dataset.to, enteredBy: $("by").value.trim() })));
+};
+$("outCancel").onclick = () => { $("outForm").hidden = true; $("stockBtns").hidden = false; };
+$("outOk").onclick = () => {
+  const reason = val("out"), detail = $("outNote").value.trim();
+  if (!reason) return toast("Izaberi razlog izlaza.", "err");
+  if (CFG.needsDetail.includes(reason) && !detail) return toast(`Za ${reason} upiši detalje.`, "err");
+  run(async () => done(await api("submit", { serial: CUR.serial, movement: "OUT", reason, detail, enteredBy: $("by").value.trim() })));
 };
 
 $("saveIn").onclick = () => {
-  const d = { serial: CUR.serial, movement: "IN", project: $("project").value, name: $("name").value.trim(),
-    location: val("loc"), origin: val("org"), note: $("note").value, enteredBy: $("by").value.trim() };
-  const miss = [["origin", "Porijeklo"], ["location", "Lokacija"], ["project", "Projekat"], ["name", "Ime"]].filter(([k]) => !d[k]).map(x => x[1]);
+  const d = { serial: CUR.serial, movement: "IN", project: $("project").value, name: $("name").value.trim(), location: val("loc"),
+    reason: val("org"), detail: $("note").value.trim(), enteredBy: $("by").value.trim() };
+  const miss = [["reason", "Porijeklo"], ["location", "Lokacija"], ["project", "Projekat"], ["name", "Ime"], ["enteredBy", "Unosi"]].filter(([k]) => !d[k]).map(x => x[1]);
   if (miss.length) return toast("Obavezno: " + miss.join(", "), "err");
-  localStorage.loc = d.location; localStorage.org = d.origin; localStorage.by = d.enteredBy;
+  if (CFG.needsDetail.includes(d.reason) && !d.detail) return toast(`Za ${d.reason} upiši detalje.`, "err");
+  localStorage.locs = JSON.stringify({ ...locs(), [who()]: d.location }); localStorage.org = d.reason; localStorage.by = d.enteredBy;
   run(async () => done(await api("submit", d)));
 };
 
@@ -236,7 +252,7 @@ $("scanClose").onclick = closeScan;
 
 // ====== UVOZ IZ EXCELA ======
 const ALIAS = { serial: ["serial", "serialnumber", "serijski", "serijskibroj", "sn", "s/n"], name: ["name", "ime", "naziv", "model", "uređaj", "uredjaj"],
-  project: ["project", "projekat", "klijent"], location: ["location", "lokacija", "magacin", "stocklocation"], origin: ["origin", "porijeklo", "izvor"],
+  project: ["project", "projekat", "klijent"], location: ["location", "lokacija", "magacin", "stocklocation"], reason: ["razlog", "porijeklo", "origin", "izvor"],
   movement: ["movement", "kretanje", "tip"], note: ["note", "napomena"] };
 const norm = h => String(h).toLowerCase().replace(/[^a-z0-9čćžšđ\/]/g, "");
 
@@ -256,11 +272,12 @@ $("file").onchange = e => run(async () => {
 });
 
 $("doImport").onclick = () => run(async () => {
+  if (!$("by").value.trim()) throw new Error("Upiši ko unosi (tab Unos).");
   const rows = ROWS.map(o => {
     const g = guess(o.serial.toUpperCase());
     return { row: o.row, serial: o.serial, movement: (o.movement || "IN").toUpperCase(),
       project: (o.project || (g && g.project) || $("iProject").value).toUpperCase(), name: o.name || (g && g.name) || "",
-      location: (o.location || $("iLoc").value).toUpperCase(), origin: (o.origin || $("iOrg").value).toUpperCase(), note: o.note || "" };
+      location: (o.location || $("iLoc").value).toUpperCase(), reason: (o.reason || $("iOrg").value).toUpperCase(), detail: o.note || "" };
   });
   const r = await api("importRows", { rows, enteredBy: $("by").value.trim() });
   toast(`Uvezeno: ${r.added}, odbijeno: ${r.errors.length}`, r.errors.length ? "err" : "ok");
