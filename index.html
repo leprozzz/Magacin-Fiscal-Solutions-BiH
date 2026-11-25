@@ -198,8 +198,9 @@ function render() {
   } else {
     $("project").value = (g && g.project) || c.project || "";
     $("name").value = (g && g.name) || c.name || "";
-    $("hint").textContent = c.status === "OUT" ? `Prethodno izdato iz ${c.location} (${c.project}).`
-      : g ? `Prepoznato po prefiksu ${g.prefix}.` : "Nepoznat prefiks – izaberi projekat i unesi ime.";
+    $("hint").textContent = (c.status === "OUT" ? `Nije u stocku (zadnje izdato iz ${c.location}, ${c.project}) – može se samo primiti (IN). `
+      : "Nije u stocku – može se samo primiti (IN); OUT je moguć tek kad je uređaj upisan. ")
+      + (g ? `Prepoznato po prefiksu ${g.prefix}.` : "Nepoznat prefiks – izaberi projekat i unesi ime.");
     if (!$("project").value || !$("name").value) $("hint").textContent += " Projekat i ime su obavezni.";
   }
 }
